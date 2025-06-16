@@ -87,8 +87,8 @@ export async function GET(req: NextRequest) {
 
     const accessToken = tokenData.access_token;
     const expiresIn = tokenData.expires_in;
-    const refreshToken = tokenData.refresh_token;
-    const openId = tokenData.open_id;
+    // const refreshToken = tokenData.refresh_token;
+    // const openId = tokenData.open_id;
 
     // --- Fetch User Profile (Optional but Recommended) ---
     // Use the access_token to fetch basic user information
@@ -113,76 +113,22 @@ export async function GET(req: NextRequest) {
     const tiktokUser = userInfo.data.user;
     console.log("TikTok User Info:", tiktokUser);
 
-    // --- Create/Update Session in NextAuth.js ---
-    // You will need to "create" a session using NextAuth.js's internal mechanisms.
-    // Since NextAuth.js v4 doesn't provide a direct `createSession` function to use externally
-    // in this way for custom providers, you'll typically manage the session manually
-    // or set cookies that NextAuth.js can pick up.
-    // A common pattern is to simply redirect to a NextAuth.js `signin` endpoint
-    // with the provider ID and user data, allowing it to handle session creation.
+    // Store TikTok user data in cookies
+    cookies().set("tiktok_user_data", JSON.stringify(tiktokUser), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24 * 7, // 1 week
+      path: "/",
+    });
 
-    // For a manual flow like this, you can:
-    // 1. Store the access token and user info in your own database associated with a user.
-    // 2. Then, create your own session cookie or simply redirect to a page that
-    //    can then fetch the session from your database (if you integrate one).
+    // Store access token
+    cookies().set("tiktok_access_token", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: expiresIn,
+      path: "/",
+    });
 
-    // A simpler approach for immediate testing with NextAuth.js's SessionProvider:
-    // This is a "hacky" way to make NextAuth.js aware of the session for a custom flow.
-    // It's not ideal for long-term production, but good for understanding.
-    // For robust production, integrate a database adapter with NextAuth.js.
-
-    // For now, let's just demonstrate a successful redirect to a dashboard
-    // and consider how to actually integrate the user data into NextAuth.js session
-    // if you're not using a database adapter.
-
-    // A more NextAuth.js-native way would involve creating a Credentials provider
-    // and using `signIn` with `redirect: false` on the server-side to handle the credentials.
-    // However, that makes the flow more complex with server actions.
-
-    // For this example, let's assume successful auth and redirect to dashboard.
-    // In a real app, you'd save tokenData and tiktokUser to your DB and then
-    // create a JWT or session that NextAuth.js can pick up, or manually sign in.
-
-    // For now, we'll redirect to a success page or dashboard.
-    // If you were using a database with NextAuth.js:
-    // You would find or create the user in your database, then store their TikTok tokens.
-    // After that, NextAuth.js would automatically pick up the session.
-
-    // For a minimal integration for testing:
-    // You could store the tokens in a secure server-side session (if you have one)
-    // or use a JWT that your client-side can decrypt.
-    // For NextAuth.js to 'know' about this user without a database adapter,
-    // you'd typically need to "manually" create a JWT that mimics NextAuth.js's JWT.
-    // This is getting complicated.
-
-    // Let's simplify for demonstration: Assume success, redirect to dashboard.
-    // You will need to build the user session logic yourself from `tokenData` and `tiktokUser`.
-
-    // Example of setting a simple cookie with access token (for demonstration ONLY, not production secure)
-    // cookies().set('tiktok_access_token', accessToken, {
-    //     httpOnly: true,
-    //     secure: true,
-    //     maxAge: expiresIn,
-    //     path: '/',
-    // });
-    // cookies().set('tiktok_user_id', openId, {
-    //     httpOnly: true,
-    //     secure: true,
-    //     maxAge: expiresIn,
-    //     path: '/',
-    // });
-
-    // You would typically sign the user in via NextAuth.js now.
-    // One way if you insist on `NextAuth.js` session:
-    // You'd need a custom Credentials Provider in authOptions
-    // that accepts this `openId` and `accessToken`
-    // and then calls `signIn("credentials", { openId, accessToken, redirect: false })` here.
-    // But then you're back to a complex NextAuth.js setup.
-
-    // Simplest path for your "native app" idea:
-    // After getting tokens, you can send them back to the client-side native app
-    // or store them in a secure server-side database tied to a user.
-    // For web, redirect to a dashboard.
     return NextResponse.redirect(new URL("/tiktok", NEXTAUTH_URL)); // Redirect to your dashboard or success page
   } catch (error) {
     console.error("TikTok OAuth callback error:", error);
@@ -191,9 +137,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-
-// Optional: You might also want to handle POST requests if TikTok were to send them,
-// but for standard OAuth callbacks, GET is typical.
-// export async function POST(req: NextRequest) {
-//   return GET(req); // Or handle differently
-// }

@@ -37,7 +37,7 @@ export async function initiateTikTokLogin() {
   let tiktokAuthUrl = "https://www.tiktok.com/v2/auth/authorize/";
 
   tiktokAuthUrl += `?client_key=${CLIENT_KEY}`;
-  tiktokAuthUrl += "&scope=user.info.basic";
+  tiktokAuthUrl += "&scope=user.info.basic,video.list";
   tiktokAuthUrl += "&response_type=code";
   tiktokAuthUrl += `&redirect_uri=${REDIRECT_URI}`;
   tiktokAuthUrl += `&state=${csrfState}`;

@@ -1,12 +1,16 @@
 // src/app/api/auth/[...nextauth]/route.ts
+// NextAuth route handler for /api/auth/[...nextauth] – includes a custom TikTok Credentials provider
 import NextAuth from "next-auth";
 import type { NextAuthOptions } from "next-auth";
-import CredentialsProvider from "next-auth/providers/credentials"; // Import CredentialsProvider
+import CredentialsProvider from "next-auth/providers/credentials"; // We'll build a manual TikTok auth flow with this CredentialsProvider
 
 // --- Type Augmentation for Session and JWT ---
-// This extends the default NextAuth.js types to include custom properties
-// like 'id' and 'accessToken' that we want to store in the session/JWT.
+// The following declarations extend the built-in NextAuth types so that we can persist
+// TikTok's open_id and accessToken inside the session and JWT objects.
 declare module "next-auth" {
+  interface User {
+    accessToken?: string;
+  }
   interface Session {
     user: {
       id?: string;
@@ -14,38 +18,38 @@ declare module "next-auth" {
       email?: string | null;
       image?: string | null;
     };
-    accessToken?: string; // To store TikTok's access token if needed on the client
+    accessToken?: string; // TikTok OAuth2 access token – exposed to the client when React needs to call TikTok APIs
   }
 
   interface JWT {
-    id?: string; // To store TikTok's open_id
-    accessToken?: string; // To store TikTok's access token
+    id?: string; // TikTok user identifier (open_id)
+    accessToken?: string; // TikTok OAuth2 access token
   }
 }
 
 // NextAuth.js configuration
 export const authOptions: NextAuthOptions = {
-  // You would list other standard providers (like GitHub, Google) here if you have them.
-  // We are NOT listing TikTok here, as its initial OAuth flow is handled manually.
+  // Add your usual OAuth providers (GitHub, Google, etc.) here if you need them. They are omitted for brevity.
+  // Do NOT register the built-in TikTok provider – we already executed the OAuth flow manually and will hand the resulting tokens to NextAuth via CredentialsProvider below.
   providers: [
     CredentialsProvider({
       // The `id` here is what you'll pass to `signIn()` on the server side.
       id: "tiktok-custom",
-      name: "TikTok Custom Login", // Display name, if you ever used a generic sign-in page
+      name: "TikTok Custom Login", // Display label when using the default sign-in page (not typically shown in our flow)
 
       // `credentials` are the fields we expect to receive when this provider is called.
-      // We'll pass `openId`, `displayName`, `avatarUrl`, and `accessToken` from our TikTok callback.
+      // These fields are posted from the /auth/tiktok/callback route once the TikTok OAuth flow finishes.
       credentials: {
         openId: { label: "TikTok Open ID", type: "text" },
         displayName: { label: "Display Name", type: "text" },
         avatarUrl: { label: "Avatar URL", type: "text" },
-        accessToken: { label: "Access Token", type: "text" }, // If you want to store this securely
+        accessToken: { label: "Access Token", type: "text" }, // Token coming from TikTok – we will persist it inside the JWT
       },
 
-      // The authorize function is where you validate the credentials.
-      // In our case, we've already validated with TikTok, so we just return the user.
-      async authorize(credentials, req) {
-        // Ensure necessary credentials are provided
+      // The authorize callback runs on the server and lets us turn the posted credentials into a valid user object.
+      // Because the OAuth handshake already happened on TikTok, we simply sanity-check the payload and return it.
+      async authorize(credentials) {
+        // Extra guard: make sure the TikTok callback gave us all the required fields
         if (
           !credentials?.openId ||
           !credentials?.displayName ||
@@ -55,34 +59,33 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // Return a user object that NextAuth.js will store in the JWT.
-        // The `id` field is crucial here, as it's typically used to identify the user.
+        // NextAuth will merge whatever we return here into the JWT. The id (open_id) is essential for user identification.
         return {
           id: credentials.openId,
           name: credentials.displayName,
           image: credentials.avatarUrl,
-          accessToken: credentials.accessToken, // Store accessToken here if you need it in JWT
+          accessToken: credentials.accessToken, // Persist access token so that we can attach it to API requests later
         };
       },
     }),
   ],
 
   // --- Session Strategy and Secret ---
-  secret: process.env.NEXTAUTH_SECRET, // Make sure this is set in .env
+  secret: process.env.NEXTAUTH_SECRET, // Required for signing/encrypting the JWT – define NEXTAUTH_SECRET in .env
   session: {
-    strategy: "jwt", // Use JWT strategy for sessions
-    maxAge: 30 * 24 * 60 * 60, // 30 days session
+    strategy: "jwt", // Persist sessions as stateless JWTs (no database)
+    maxAge: 30 * 24 * 60 * 60, // Re-authenticate after 30 days
   },
 
   // --- Callbacks for JWT and Session ---
   callbacks: {
-    async jwt({ token, user, account, profile }) {
+    async jwt({ token, user }) {
       // 'user' will be populated when the CredentialsProvider returns a user
       if (user) {
         token.id = user.id;
         token.name = user.name;
         token.image = user.image;
-        token.accessToken = (user as any).accessToken; // Cast to any to access custom prop
+        token.accessToken = user.accessToken; // Stash TikTok token inside JWT
       }
       // 'account' and 'profile' would be for standard OAuth providers (like GitHub)
       // For our custom TikTok flow, we handle the initial token/profile in the callback route.
@@ -95,15 +98,15 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name;
         session.user.image = token.image as string | null | undefined;
       }
-      session.accessToken = token.accessToken as string | undefined; // Pass access token to the session object for client-side use
+      session.accessToken = token.accessToken as string | undefined; // Surface the token to the browser when you need to call TikTok APIs client-side
       return session;
     },
   },
 
   // --- Custom Pages ---
   pages: {
-    signIn: "/sign-in", // Path to your custom sign-in page
-    error: "/auth/error", // Path to your error page
+    signIn: "/sign-in", // Friendly custom sign-in route
+    error: "/auth/error", // Redirect here when NextAuth encounters an error
   },
 };
 
