@@ -1,7 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
+/**
+ * Server-side TikTok OAuth 2.0 callback handler.
+ *
+ * Sequence:
+ * 1. Extract `code` and `state` query parameters returned by TikTok after user consent.
+ * 2. Validate the returned `state` against the CSRF token stored in cookies.
+ * 3. Exchange the authorization `code` for an access token via TikTok's token endpoint.
+ * 4. (Optional) Fetch the authenticated user's public profile information.
+ * 5. Persist the access token and user data in secure, http-only cookies.
+ * 6. Redirect the user to a success route on completion or an error route if any step fails.
+ *
+ * Environment variables consumed:
+ * - NEXTAUTH_URL – Base URL for constructing absolute redirect destinations.
+ * - TIKTOK_CLIENT_KEY & TIKTOK_CLIENT_SECRET – TikTok application credentials.
+ * - NEXT_PUBLIC_TIKTOK_REDIRECT_URI – Redirect URI registered with TikTok and used during the OAuth handshake.
+ */
 export async function GET(req: NextRequest) {
+  // Parse query parameters returned by TikTok and extract the
+  // single-use authorization `code` and anti-CSRF `state` value.
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -9,6 +27,7 @@ export async function GET(req: NextRequest) {
   // Retrieve the CSRF state from the cookie
   const csrfStateFromCookie = cookies().get("csrfState")?.value;
 
+  // Base URL used to build absolute redirect destinations.
   const NEXTAUTH_URL = process.env.NEXTAUTH_URL;
   if (!NEXTAUTH_URL) {
     console.error("NEXTAUTH_URL is not configured");
@@ -38,6 +57,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // TikTok application credentials and the redirect URI registered in the developer portal.
   const CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
   const CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;
   const REDIRECT_URI = process.env.NEXT_PUBLIC_TIKTOK_REDIRECT_URI;
